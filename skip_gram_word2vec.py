@@ -1,9 +1,13 @@
+# Importing all libraries
 import tensorflow as tf
 import numpy as np
 import re
 from collections import Counter
 import random
 import time
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+import pickle
 
 def read_data(text_file):
 	'''
@@ -92,15 +96,26 @@ def generate_batches(words, batch_size, window_size=5):
 			inputs.extend([x]*len(y))
 		yield inputs, targets	
 
+def plot_embeddings(embeddings, targets, file='vis_word2vec.png'):
+	'''
+	Plot the n-dimensional embeddings
+	'''
+	plt.figure(figsize=(18,18))
+	for (i, target) in enumerate(targets):
+		x, y = embeddings[i, :]
+		plt.scatter(x, y)
+		plt.annotate(target, xy=(x,y), xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
+	plt.savefig(file)
+
 
 # Model Hyperparameters
-batch_size = 128
+batch_size = 512
 embedding_size = 128
 window_size = 5
 sampled = 100
 valid_size = 16
 valid_window = 100
-epochs = 100
+epochs = 10
 
 
 if __name__ == '__main__':
@@ -149,21 +164,22 @@ if __name__ == '__main__':
 		sess.run(init)
 		i = 1
 		total_loss = 0
-		for epoch in range(epochs):
+		for epoch in range(epochs+1):
+			start_epoch = time.time()
 			batches = generate_batches(final_words, batch_size, window_size)
 			start = time.time()
 			for x, y in batches:
 				l, _ = sess.run([loss, optimizer], feed_dict={inputs:x, targets:np.array(y)[:, None]})
 				total_loss += l
 
-				if i % 100 ==0:
+				if i % 100 == 0:
 					end = time.time()
 					print ("Epoch: {}/{}, Iteration: {}, Average loss: {:.4f}, Time/batch: {}".format(epoch, epochs, i, total_loss, (end-start)))
 
 					total_loss = 0
 					start = time.time()
 
-				if i % 1000 == 0:
+				if i % 100 == 0:
 					sim = similarity.eval()
 					for j in range(valid_size):
 						valid_word = int_to_vocab[valid_examples[j]]
@@ -176,8 +192,25 @@ if __name__ == '__main__':
 						print (string)
 				i += 1
 
-		saved_At = saver.save(sess, "checkpoints/final.ckpt")
+			#end_epoch = time.time()
+			#print ('Total Epoch Time : {:.4}'.format(end_epoch-start_epoch))
+
+		saved_At = saver.save(sess, "checkpoints/final_100.ckpt")
 		final_embeddings = sess.run(normalized_embeddings)					
+
+		with open('embeddings.txt', 'wb') as f:
+			print ("Saving Embeddings...")
+			pickle.dump([final_embeddings, int_to_vocab], f, -1)
+
+
+		# Plotting learned vector representations using TSNE
+		tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
+		new_embeddings = tsne.fit_transform(final_embeddings[:500, :])
+		choosen_targets = [int_to_vocab[i] for i in range(500)]
+		plot_embeddings(new_embeddings, choosen_targets)
+
+
+
 
 
 
