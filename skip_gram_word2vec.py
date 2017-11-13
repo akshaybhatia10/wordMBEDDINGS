@@ -8,6 +8,10 @@ import time
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import pickle
+#import nltk
+#nltk.download('stopwords')
+from nltk.corpus import stopwords
+
 
 def read_data(text_file):
 	'''
@@ -16,34 +20,46 @@ def read_data(text_file):
 	Return the text
 	'''
 	text = ''
-	data = open(text_file)
+	data = open(text_file, encoding="utf-8")
 	data = data.read()
 	text = ''.join(data)
 	return text
 
+# def preprocess_data(text):
+# 	'''
+# 	Replace punctuation with tokens
+# 	'''
+# 	text = text.lower()
+# 	text = text.replace('.', ' <PERIOD> ')
+# 	text = text.replace(',', ' <COMMA> ')
+# 	text = text.replace('"', ' <QUOTATION_MARK> ')
+# 	text = text.replace(';', ' <SEMICOLON> ')
+# 	text = text.replace('!', ' <EXCLAMATION_MARK> ')
+# 	text = text.replace('?', ' <QUESTION_MARK> ')
+# 	text = text.replace('(', ' <LEFT_PAREN> ')
+# 	text = text.replace(')', ' <RIGHT_PAREN> ')
+# 	text = text.replace('--', ' <HYPHENS> ')
+# 	text = text.replace('?', ' <QUESTION_MARK> ')
+# 	# text = text.replace('\n', ' <NEW_LINE> ')
+# 	text = text.replace(':', ' <COLON> ')
+# 	text = text.split()
+
+# 	word_count = Counter(text)
+# 	words = [word for word in text if word_count[word] > 5]
+
+# 	return words
+
+
 def preprocess_data(text):
 	'''
-	Replace punctuation with tokens
-	'''
-	text = text.lower()
-	text = text.replace('.', ' <PERIOD> ')
-	text = text.replace(',', ' <COMMA> ')
-	text = text.replace('"', ' <QUOTATION_MARK> ')
-	text = text.replace(';', ' <SEMICOLON> ')
-	text = text.replace('!', ' <EXCLAMATION_MARK> ')
-	text = text.replace('?', ' <QUESTION_MARK> ')
-	text = text.replace('(', ' <LEFT_PAREN> ')
-	text = text.replace(')', ' <RIGHT_PAREN> ')
-	text = text.replace('--', ' <HYPHENS> ')
-	text = text.replace('?', ' <QUESTION_MARK> ')
-	# text = text.replace('\n', ' <NEW_LINE> ')
-	text = text.replace(':', ' <COLON> ')
-	text = text.split()
+	clean dataset - replace numbers and stopwords with " " 
+	'''	
+	text = re.sub("[^a-zA-Z]", " ", text)
+	words = text.lower().split()
+	words = [w for w in words if w not in noise]
+	all_text = ' '.join(words)
+	return all_text, words 
 
-	word_count = Counter(text)
-	words = [word for word in text if word_count[word] > 5]
-
-	return words
 
 
 def prepare_data(words):
@@ -107,6 +123,8 @@ def plot_embeddings(embeddings, targets, file='vis_word2vec.png'):
 		plt.annotate(target, xy=(x,y), xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
 	plt.savefig(file)
 
+    
+noise = set(stopwords.words("english"))
 
 # Model Hyperparameters
 batch_size = 512
@@ -115,13 +133,13 @@ window_size = 5
 sampled = 100
 valid_size = 16
 valid_window = 100
-epochs = 10
+epochs = 5000
 
 
 if __name__ == '__main__':
-	data = read_data('data/HarryPotter.txt')
+	data = read_data('HarryPotter.txt')
 	#print (data[:100])
-	all_words = preprocess_data(data)
+	all_text, all_words = preprocess_data(data)
 	#print (data[:100])
 	vocab_to_int, int_to_vocab = prepare_data(all_words)
 	vocab_size = len(int_to_vocab)
@@ -172,14 +190,14 @@ if __name__ == '__main__':
 				l, _ = sess.run([loss, optimizer], feed_dict={inputs:x, targets:np.array(y)[:, None]})
 				total_loss += l
 
-				if i % 100 == 0:
+				if i % 5000 == 0:
 					end = time.time()
 					print ("Epoch: {}/{}, Iteration: {}, Average loss: {:.4f}, Time/batch: {}".format(epoch, epochs, i, total_loss, (end-start)))
 
 					total_loss = 0
 					start = time.time()
 
-				if i % 100 == 0:
+				if i % 10000 == 0:
 					sim = similarity.eval()
 					for j in range(valid_size):
 						valid_word = int_to_vocab[valid_examples[j]]
@@ -195,7 +213,7 @@ if __name__ == '__main__':
 			#end_epoch = time.time()
 			#print ('Total Epoch Time : {:.4}'.format(end_epoch-start_epoch))
 
-		saved_At = saver.save(sess, "checkpoints/final_100.ckpt")
+		saved_At = saver.save(sess, "checkpoints/final_10000.ckpt")
 		final_embeddings = sess.run(normalized_embeddings)					
 
 		with open('embeddings.txt', 'wb') as f:
