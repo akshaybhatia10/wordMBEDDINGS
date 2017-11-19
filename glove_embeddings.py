@@ -64,6 +64,43 @@ def build_vocab(words, vocab_size):
 	return data, count, int_to_vocab, vocab_to_int 
 
 vocab_size = 50000
+index = 0
+
+def get_batches(batch_size, num_skips, window_size):
+	'''
+	params: batch_size, num_skips, window_size
+	Generate batches of inputs(context), targets and weights( denote how far the context word is from the target word)	
+	'''
+	global index
+
+	inputs = np.ndarray(shape=(batch_size), dtype=np.int32)
+	targets = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
+	weights = np.ndarray(shape=(batch_size), dtype=np.float32)
+
+	# skip window size
+	total_window_size = 2*window_size + 1
+	cache = collections.deque(maxlen=total_window_size)
+	
+	for _ in range(total_window_size):
+		cache.append(data[index])
+		index = (index + 1) % len(data)
+
+	for i in range(batch_size // num_skips):
+		t = window_size
+		t_avoid = [window_size]
+		for j in range(num_skips):
+			while t in t_avoid:
+				t = random.randint(0, total_window_size - 1)
+			t_avoid.append(t)
+			inputs[i*num_skips + j] = cache[window_size]
+			targets[i*num_skips + j, 0] = cache[t]
+			weights[i*num_skips + j] = abs(1.0/(t - window_size))
+
+	cache.append(data[index])
+	index = (index + 1) % len(data)		
+	
+	return inputs, targets, weights
+
 
 if __name__ == '__main__':
 	corpus = read_data('corpus/HarryPotter.txt')
