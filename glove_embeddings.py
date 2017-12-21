@@ -1,10 +1,14 @@
 from collections import Counter, defaultdict
+import collections
 import os
 import random
 import tensorflow as tf
 import nltk
 import re
 from nltk.corpus import stopwords
+from pprint import pprint as pp
+from scipy.sparse import lil_matrix
+import numpy as np
 
 
 def read_data(text_file):
@@ -63,8 +67,6 @@ def build_vocab(words, vocab_size):
 	
 	return data, count, int_to_vocab, vocab_to_int 
 
-vocab_size = 50000
-index = 0
 
 def get_batches(batch_size, num_skips, window_size):
 	'''
@@ -102,11 +104,32 @@ def get_batches(batch_size, num_skips, window_size):
 	return inputs, targets, weights
 
 
+def get_cooccurrence_matrix(batch_size, num_skips, window_size):
+	index = 0
+	for i in range(len(data)//batch_size):
+		inputs, targets, weights = get_batches(batch_size, num_skips, window_size)
+		targets = targets.reshape(-1)
+
+		for inp, target, weight in zip(inputs, targets, weights):
+			cooccurrence_matrix[inp, target] += (1.0*weight)
+
+
 if __name__ == '__main__':
-	corpus = read_data('corpus/HarryPotter.txt')
+
+	vocab_size = 50000
+	index = 0
+	batch_size = 8
+	num_skips = 8
+	window_size = 4
+
+	corpus = read_data('../corpus/HarryPotter.txt')
 	text, words = preprocess_data(corpus)
-	#print (words[:50])
+	print(text[:100], '\n', words[:50])
 	data, count, int_to_vocab, vocab_to_int = build_vocab(words, vocab_size)
+	#print(data[:100])
+	for word in words[:50]:
+		print ('Word: {} , index: {}'.format(word, vocab_to_int[word]))
 
-
-
+	cooccurrence_matrix = lil_matrix((vocab_size, vocab_size), dtype=np.float32) 
+	cooccurrence_matrix = get_cooccurrence_matrix(batch_size, num_skips, window_size)
+	print (cooccurrence_matrix)	
