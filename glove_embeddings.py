@@ -1,3 +1,6 @@
+"""
+Generate word embeddings using Glove algorithm
+"""
 from collections import Counter, defaultdict
 import collections
 import os
@@ -11,34 +14,49 @@ from scipy.sparse import lil_matrix
 import numpy as np
 
 
-def read_data(text_file):
-	'''
-	params: text_file
-	Load and extract the text file. 
-	Return the text
-	'''
+def read_data(path):
+
+	"""Loads and Extracts text from given file.
+
+    Args:
+        path (str): Path to text file.
+
+    Returns:
+        Complete text of the file including special characters.
+	
+	"""
 	text = ''
-	data = open(text_file, encoding="utf-8")
-	data = data.read()
-	text = ''.join(data)
+	with open(path,  'r', encoding="utf-8") as f:
+		data = f.readlines()
+		text = ''.join(data)
+	
 	return text
 
 def preprocess_data(text):
-	'''
-	clean dataset - replace numbers and stopwords with " " 
-	'''	
+	"""Preprocesses text and removes special character including numbers.
+
+    Args:
+        text (str): Text to be preprocessed.
+
+    Returns:
+        Tuple of complete preprocessed text and words.
+	
+	"""
 	text = re.sub("[^a-zA-Z]", " ", text)
 	words = text.lower().split()
 	all_text = ' '.join(words)
-	return all_text, words
+	return (all_text, words)
 
 def build_vocab(words, vocab_size):
-	'''
-	params: words, vocab_size
-	Process raw inputs and build a dictionary 
-	and replace rare words with UNK token (index 0). 
-	returns 
-	'''
+	"""Process raw inputs and build a dictionary and replace rare words with UNK token (index 0). 
+	
+	Args:
+		words (list): The complete word list
+		vocab_size (int): size of the vocabulary
+	
+	Returns: 
+		Tuple of 4 objects namely data, count, int_to_vocab, vocab_to_int
+	"""
 	count = [['UNK', -1]]
 	count.extend(Counter(words).most_common(vocab_size - 1))
 	
@@ -65,14 +83,20 @@ def build_vocab(words, vocab_size):
 	#for (word, index) in vocab_to_int.items():
 	int_to_vocab = dict(zip(vocab_to_int.values(), vocab_to_int.keys()))
 	
-	return data, count, int_to_vocab, vocab_to_int 
+	return (data, count, int_to_vocab, vocab_to_int) 
 
 
 def get_batches(batch_size, num_skips, window_size):
-	'''
-	params: batch_size, num_skips, window_size
-	Generate batches of inputs(context), targets and weights( denote how far the context word is from the target word)	
-	'''
+	"""Generate batches of inputs(context), targets and weights( denote how far the context word is from the target word)	
+	
+	Args:
+		batch_size (int): The size of each batch 
+		num_skips (int): Number of times to reuse an input word for a target word
+		window_size (int): Number of words to consider left and right.
+
+	Returns:
+		batches of input words, target words and corresponding weights
+	"""
 	global index
 
 	inputs = np.ndarray(shape=(batch_size), dtype=np.int32)
@@ -105,8 +129,17 @@ def get_batches(batch_size, num_skips, window_size):
 
 
 def get_cooccurrence_matrix(batch_size, num_skips, window_size):
+	"""Generate Co occurrence matrix	
+	
+	Args:
+		batch_size (int): The size of each batch 
+		num_skips (int): Number of times to reuse an input word for a target word
+		window_size (int): Number of words to consider left and right.
+	"""
 	index = 0
-	for i in range(len(data)//batch_size):
+	tot_iterations = data_count//batch_size
+	print('Total Iterations: {}'.format(tot_iterations))
+	for i in range(tot_iterations):
 		inputs, targets, weights = get_batches(batch_size, num_skips, window_size)
 		targets = targets.reshape(-1)
 
@@ -118,18 +151,28 @@ if __name__ == '__main__':
 
 	vocab_size = 50000
 	index = 0
-	batch_size = 8
+	batch_size = 128
+	embedding_size = 128
 	num_skips = 8
 	window_size = 4
+	mat_idx = 0
+
+	valid_size = 16
+	valid_window = 100
+
+
 
 	corpus = read_data('../corpus/HarryPotter.txt')
 	text, words = preprocess_data(corpus)
-	print(text[:100], '\n', words[:50])
+	#print(text[:200], '\n', words[:50])
 	data, count, int_to_vocab, vocab_to_int = build_vocab(words, vocab_size)
+	data_count = len(data)
 	#print(data[:100])
-	for word in words[:50]:
-		print ('Word: {} , index: {}'.format(word, vocab_to_int[word]))
+	#for word in words[:50]:
+	#	print ('Word: {} , index: {}'.format(word, vocab_to_int[word]))
 
 	cooccurrence_matrix = lil_matrix((vocab_size, vocab_size), dtype=np.float32) 
-	cooccurrence_matrix = get_cooccurrence_matrix(batch_size, num_skips, window_size)
-	print (cooccurrence_matrix)	
+	print (cooccurrence_matrix.shape)
+	get_cooccurrence_matrix(batch_size=8, num_skips =num_skips, window_size=window_size)	
+
+	
