@@ -8,10 +8,12 @@ import random
 import tensorflow as tf
 import nltk
 import re
+import pickle
 from nltk.corpus import stopwords
 from pprint import pprint as pp
 from scipy.sparse import lil_matrix
 import numpy as np
+import time
 
 
 def read_data(path):
@@ -146,6 +148,17 @@ def get_cooccurrence_matrix(batch_size, num_skips, window_size):
 		for inp, target, weight in zip(inputs, targets, weights):
 			cooccurrence_matrix[inp, target] += (1.0*weight)
 
+def plot_embeddings(embeddings, targets, file='vis_word2vec.png'):
+	'''
+	Plot the n-dimensional embeddings
+	'''
+	plt.figure(figsize=(18,18))
+	for (i, target) in enumerate(targets):
+		x, y = embeddings[i, :]
+		plt.scatter(x, y)
+		plt.annotate(target, xy=(x,y), xytext=(5,2), textcoords='offset points', ha='right', va='bottom')
+	plt.savefig(file)			
+
 
 if __name__ == '__main__':
 
@@ -160,7 +173,7 @@ if __name__ == '__main__':
 	valid_size = 16
 	valid_window = 100
 
-
+	epochs = 5000
 
 	corpus = read_data('../corpus/HarryPotter.txt')
 	text, words = preprocess_data(corpus)
@@ -178,18 +191,18 @@ if __name__ == '__main__':
 	inputs = tf.placeholder(tf.int32, shape=(batch_size))
 	targets = tf.placeholder(tf.int32, shape=(batch_size, batch_size))
 
-	embeddings[0] = tf.Variable(tf.random_uniform((vocab_size, embedding_size), -1, 1, dtype=tf.float32))
-	embeddings[1] = tf.Variable(tf.random_uniform((vocab_size), 0.1, 0.01, dtype=tf.float32))
+	embeddings = tf.Variable(tf.random_uniform((vocab_size, embedding_size), -1, 1, dtype=tf.float32))
+	b_embeddings = tf.Variable(tf.random_uniform((vocab_size), 0.0, 0.01, dtype=tf.float32))
 
-	embed[0] = tf.nn.embedding_lookup(embeddings[0], inputs)
-	embed[1] = tf.nn.embedding_lookup(embeddings[0], targets)
-	embed[2] = tf.nn.embedding_lookup(embeddings[1], inputs)
-	embed[3] = tf.nn.embedding_lookup(embeddings[1], targets)
+	in_embed = tf.nn.embedding_lookup(embeddings, inputs)
+	out_embed = tf.nn.embedding_lookup(embeddings, targets)
+	b_in_embed = tf.nn.embedding_lookup(b_embeddings, inputs)
+	b_out_embed = tf.nn.embedding_lookup(b_embeddings, targets)
 
 	w1 = tf.placeholder(tf.float32, shape=(batch_size))
 	w2 = tf.placeholder(tf.float32, shape=(batch_size))
 
-	glove_loss = w1 * (tf.reduce_sum(embed[0]*embed[1], axis=1) + embed[2] + embed[3] - tf.log(1+w2))**2
+	glove_loss = w1 * (tf.reduce_sum(in_embed*out_embed, axis=1) + b_in_embed + b_out_embed - tf.log(1+w2))**2
 	loss = tf.reduce_mean(glove_loss)
 	optimizer = tf.train.AdagradOptimizer(1.0).minimize(loss)
 
@@ -197,7 +210,70 @@ if __name__ == '__main__':
 	valid_examples = np.append(valid_examples, random.sample(range(1000 + 1000+valid_window), valid_size//2))
 	valid_set = tf.constant(valid_examples, dtype=tf.int32)
 
-	norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings[0]), 1, keep_dims=True))
-	normalized_embeddings = embeddings[0] / norm
+	norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
+	normalized_embeddings = embeddings / norm
 	valid_embeddings = tf.nn.lookup(normalized_embeddings, valid_set)
 	similarity = tf.matmul(valid_embeddings, tf.transpose(normalized_embeddings))
+
+	# Training 
+
+	init = tf.global_variables_initializer()
+	sess= tf.Session()
+	saver = tf.Saver()
+
+	with sess:
+		sess.run(init)
+		i = 0
+		total_loss = 0
+		for epoch in range(epochs):
+			start_epoch = time.time()
+			batches = get_batches(batch_size, num_skips, window_size)
+			batch_w1 = []
+			batch_w2 = []
+			start = time.time()
+			for x, y, _ in zip(batches[0], batches[1].reshape(-1), batches[2]):
+				batch_w1.append((np.asscalar(cooccurrence_matrix[x, y])/ 100.0)**0.75)
+				batch_w2.append(cooccurrence_matrix[x, y])
+
+			batch_w1 = np.clip(batch_w1, -100, 1)
+			batch_w2 = np.asarray(batch_w2)	
+
+			feed_dict = {inputs: batches[0].reshape(-1), targets: batches[1].reshape(-1),
+						w1: batch_w1, w2:batch_w2}
+			l, _ = sess.run([loss, optimizer], feed_dict=feed_dict)
+			total_loss += l
+
+			if i % 2000 == 0:
+				end = time.time()
+				total_loss = total_loss / 2000 
+				print ("Epoch: {}/{}, Iteration: {}, Average loss: {:.4f}, Time/batch: {}".format(epoch, epochs, i, total_loss, (end-start)))
+				total_loss = 0
+				start = time.time()
+
+			if i % 5000 == 0:
+				sim = similarity.eval()
+				for j in range(valid_size):
+					valid_word = int_to_vocab[valid_examples[j]]
+					top = 8
+					nearest = (-sim[j : ]).argsort()[1: top+1]
+					string = 'Nearest to {} : '.format(valid_word)
+					for k in range(top):
+						closest = int_to_vocab[nearest[k]]
+						string += " " + closest
+					print (string)		
+			i += 1
+
+		saved_At = saver.save(sess, "checkpoints/final_10000.ckpt")
+		final_embeddings = sess.run(normalized_embeddings)
+
+		with open('embeddings.txt', 'wb') as f:
+			print ("Saving Embeddings...")
+			pickle.dump([final_embeddings, int_to_vocab], f, -1)			
+
+		
+		# Plotting learned vector representations using TSNE
+		tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
+		new_embeddings = tsne.fit_transform(final_embeddings[:500, :])
+		choosen_targets = [int_to_vocab[i] for i in range(500)]
+		plot_embeddings(new_embeddings, choosen_targets)
+	
