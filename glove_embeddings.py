@@ -175,4 +175,29 @@ if __name__ == '__main__':
 	print (cooccurrence_matrix.shape)
 	get_cooccurrence_matrix(batch_size=8, num_skips =num_skips, window_size=window_size)	
 
-	
+	inputs = tf.placeholder(tf.int32, shape=(batch_size))
+	targets = tf.placeholder(tf.int32, shape=(batch_size, batch_size))
+
+	embeddings[0] = tf.Variable(tf.random_uniform((vocab_size, embedding_size), -1, 1, dtype=tf.float32))
+	embeddings[1] = tf.Variable(tf.random_uniform((vocab_size), 0.1, 0.01, dtype=tf.float32))
+
+	embed[0] = tf.nn.embedding_lookup(embeddings[0], inputs)
+	embed[1] = tf.nn.embedding_lookup(embeddings[0], targets)
+	embed[2] = tf.nn.embedding_lookup(embeddings[1], inputs)
+	embed[3] = tf.nn.embedding_lookup(embeddings[1], targets)
+
+	w1 = tf.placeholder(tf.float32, shape=(batch_size))
+	w2 = tf.placeholder(tf.float32, shape=(batch_size))
+
+	glove_loss = w1 * (tf.reduce_sum(embed[0]*embed[1], axis=1) + embed[2] + embed[3] - tf.log(1+w2))**2
+	loss = tf.reduce_mean(glove_loss)
+	optimizer = tf.train.AdagradOptimizer(1.0).minimize(loss)
+
+	valid_examples = np.array(random.sample(range(valid_window), valid_size//2))
+	valid_examples = np.append(valid_examples, random.sample(range(1000 + 1000+valid_window), valid_size//2))
+	valid_set = tf.constant(valid_examples, dtype=tf.int32)
+
+	norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings[0]), 1, keep_dims=True))
+	normalized_embeddings = embeddings[0] / norm
+	valid_embeddings = tf.nn.lookup(normalized_embeddings, valid_set)
+	similarity = tf.matmul(valid_embeddings, tf.transpose(normalized_embeddings))
