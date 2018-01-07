@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+import pickle
 
 PATH = '../corpus/test.txt'
 
@@ -90,9 +91,8 @@ print ('Converting Data Done: ', end-start)
 X, Y = np.asarray(X), np.asarray(Y)
 print (X.shape, Y.shape)
 
-batch_size = 64
 embedding_size = 100
-epochs = 10
+epochs = 500
 
 inputs = tf.placeholder(tf.float32, shape=(None, vocab_size))
 targets = tf.placeholder(tf.float32, shape=(None, vocab_size))
@@ -108,7 +108,7 @@ predictions = tf.nn.softmax(output)
 
 #softmax_loss = tf.nn.softmax_cross_entropy_with_logits(labels=targets,logits=predictions)
 softmax_loss = tf.reduce_mean(-tf.reduce_sum(targets * tf.log(predictions), reduction_indices=[1]))
-optimizer = tf.train.AdamOptimizer(learning_rate=0.001).minimize(softmax_loss)
+optimizer = tf.train.AdamOptimizer(learning_rate=0.1).minimize(softmax_loss)
 
 init = tf.global_variables_initializer()
 session = tf.Session()
@@ -120,7 +120,8 @@ with session as sess:
     for epoch in range(epochs):
         start = time.time()
         sess.run(optimizer, feed_dict={inputs:X, targets:Y})
-        print ('Epoch: {}, Loss:{}, Time taken:{:.3f} seconds'.format(epoch, sess.run(softmax_loss, feed_dict={inputs:X, targets:Y}), (time.time() - start)))
+        if (epoch%50 == 0):    
+            print ('Epoch: {}, Loss:{}, Time taken:{:.3f} seconds'.format(epoch, sess.run(softmax_loss, feed_dict={inputs:X, targets:Y}), (time.time() - start)))
 
     embeddings = sess.run(embedding_weights + embedding_bias)
     #print (embeddings[vocab_to_int['harry']])
@@ -129,6 +130,11 @@ with session as sess:
     print (find_closest('triwizard', embeddings))
     print (find_closest('fudge', embeddings))
     print (find_closest('hogwarts', embeddings))
+
+    saved_at = saver.save(sess, "final_1000.ckpt")
+    with open('embeddings.txt', 'wb') as f:
+        print ("Saving Embeddings...")
+        pickle.dump([embeddings, int_to_vocab], f, -1)
 
     # Plotting learned vector representations using TSNE
     tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
